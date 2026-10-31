@@ -1,0 +1,23 @@
+name: domain-hunter
+on:
+  schedule:
+    - cron: "17 5 * * *"   # daily
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 domain-hunter/hunter.py
+      - name: Show in job summary
+        run: cat domain-hunter/results.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit results
+        run: |
+          git config user.name "domain-hunter"
+          git config user.email "domain-hunter@users.noreply.github.com"
+          git add domain-hunter/results.md domain-hunter/results.csv
+          git commit -m "domain-hunter: update results" || exit 0
+          git push
