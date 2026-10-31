@@ -59,8 +59,20 @@ def history(domain):
     ok = [r[0] for r in rows if r[1] == "200"]
     if not ok:
         return None
-    return {"snapshots": len(ok), "first": int(ok[0][:4]), "last": int(ok[-1][:4]),
+    return {"snapshots": len(ok), "first": int(ok[0][:4]), "last": int(ok[-1][:4]), "last_ts": ok[-1],
             "healthy": round(len(ok) / len(rows), 2)}
+
+
+SPAM_TEXT = re.compile(r"casino|viagra|cialis|payday|porn|escort|replica|poker|buy cheap|essay writing|forex|\bslots?\b|sportsbook|domain (is )?for sale|this domain|parked|coming soon", re.I)
+
+
+def looks_spammy(domain, ts):
+    """Fetch the last healthy capture and look for spam / parked-page text."""
+    code, body = get(f"https://web.archive.org/web/{ts}id_/http://{domain}/")
+    if code != 200:
+        return False
+    txt = re.sub(r"<[^>]+>", " ", body.decode("utf-8", "ignore"))
+    return len(SPAM_TEXT.findall(txt)) >= 2
 
 
 def load_cache():
@@ -106,6 +118,8 @@ def evaluate(domain):
     age = datetime.now(timezone.utc).year - h["first"] if h else 0
     if not h or h["snapshots"] < MIN_SNAPSHOTS or age < MIN_AGE_YEARS:
         return domain, "weak", None
+    if looks_spammy(domain, h["last_ts"]):
+        return domain, "weak", None
     name = domain.rsplit(".", 1)[0]
     score = (h["snapshots"] + age * 3 + max(0, 12 - len(name)) * 2
              + (10 if h["last"] >= 2018 else 0) + int(h["healthy"] * 10)
@@ -137,7 +151,12 @@ def main():
             r["healthy"] = float(r.get("healthy") or 0)
     merged = {r["domain"]: r for r in old}
     merged.update({r["domain"]: r for r in hits})
-    results = sorted(merged.values(), key=lambda r: -r["score"])[:300]
+    ranked = sorted(merged.values(), key=lambda r: -r["score"])
+    # only keep names that are STILL free right now (others may have been registered)
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        still = list(ex.map(lambda r: is_free(r["domain"]), ranked[:150]))
+    results = [r for r, ok in zip(ranked[:150], still) if ok is not False][:300]
+    hits = [r for r in hits if any(r["domain"] == x["domain"] for x in results)]
 
     fields = ["domain", "score", "age_years", "snapshots", "first", "last", "healthy", "wayback"]
     with prev.open("w", newline="") as f:
@@ -147,9 +166,9 @@ def main():
     lines = [f"# Free domains with real history ({stamp})\n",
              f"This run: {len(cands)} checked, {len(hits)} new hits. Total kept: {len(results)}. "
              "Re-verify availability at the registrar before buying.\n",
-             "| # | Domain | Score | Age | Snapshots | Last seen | History |", "|---|---|---|---|---|---|---|"]
+             "| # | Domain | Score | Age | Snapshots | Last seen | History | Buy |", "|---|---|---|---|---|---|---|---|"]
     for i, r in enumerate(results[:100], 1):
-        lines.append(f"| {i} | {r['domain']} | {r['score']} | {r['age_years']}y | {r['snapshots']} | {r['last']} | [wayback]({r['wayback']}) |")
+        lines.append(f"| {i} | {r['domain']} | {r['score']} | {r['age_years']}y | {r['snapshots']} | {r['last']} | [wayback]({r['wayback']}) | [Porkbun](https://porkbun.com/checkout/search?q={r['domain']}) / [Namecheap](https://www.namecheap.com/domains/registration/results/?domain={r['domain']}) |")
     (HERE / "results.md").write_text("\n".join(lines) + "\n")
     top = "\n".join(f"{i}. **{r['domain']}** (score {r['score']}, {r['age_years']}y, last seen {r['last']})"
                     for i, r in enumerate(sorted(hits, key=lambda r: -r["score"])[:10], 1))
