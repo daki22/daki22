@@ -5,19 +5,31 @@ on:
   workflow_dispatch: {}
 permissions:
   contents: write
+  issues: write
+concurrency: domain-hunter
 jobs:
   hunt:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - run: python3 domain-hunter/hunter.py
-      - name: Show in job summary
+      - name: Job summary
         run: cat domain-hunter/results.md >> "$GITHUB_STEP_SUMMARY"
       - name: Commit results
         run: |
           git config user.name "domain-hunter"
           git config user.email "domain-hunter@users.noreply.github.com"
-          git add domain-hunter/results.md domain-hunter/results.csv
+          git add domain-hunter/results.md domain-hunter/results.csv domain-hunter/cache.json
           git commit -m "domain-hunter: update results" || exit 0
-          git push
+          git pull --rebase -q && git push
+      - name: Notify (phone push via GitHub issue)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if grep -q '^1\.' domain-hunter/top_new.md; then
+            gh issue create --title "New free domains $(date -u +%F)" \
+              --body "$(cat domain-hunter/top_new.md)
+
+          Full list: domain-hunter/results.md"
+          fi
