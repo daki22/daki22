@@ -9,7 +9,7 @@ Only free sources (Verisign RDAP + Wayback Machine). Pipeline:
                     services/innovation vocabulary, reject spam/blog/parked pages
   5. rank by content first, write results.md / results.csv, notify top finds
 """
-import csv, itertools, json, random, re, sys, time, urllib.error, urllib.request
+import csv, itertools, json, random, re, sys, time, urllib.error, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +20,7 @@ MIN_SNAPSHOTS = 24
 MIN_AGE_YEARS = 7
 MIN_PAGES = 150             # archived HTML pages: only large, serious sites
 MIN_CONTENT = 10            # distinct business terms in best capture
+MIN_PATHS = 2               # 'careers', 'investors', 'services'... sections that existed
 MAX_LEN = 18
 KEEP_DAYS = 90
 UA = {"User-Agent": "domain-hunter/3.0 (personal research)"}
@@ -110,6 +111,45 @@ def content_score(domain, stamps):
     return best
 
 
+PATHS = ["careers", "investors", "investor-relations", "services", "about", "about-us", "team", "legal",
+         "press", "news", "contact", "clients", "solutions", "products", "company", "management"]
+BRAND_DESC = re.compile(r"company|corporation|bank|brand|firm|manufactur|retailer|group|holding|software|service|insurance|trademark|organization|business", re.I)
+
+
+def inner_pages(domain):
+    """How many typical 'real company' sections existed (careers, investors, services...)."""
+    found = 0
+    for p in PATHS:
+        code, body = get(f"https://web.archive.org/cdx/search/cdx?output=json&fl=timestamp&limit=1"
+                         f"&filter=statuscode:200&matchType=prefix&url={domain}/{p}", maxbytes=20_000)
+        if code == 200 and body and len(json.loads(body)) > 1:
+            found += 1
+    return found
+
+
+def wikipedia_mentions(domain):
+    """Articles on English Wikipedia that mention the domain (e.g. as official website)."""
+    q = urllib.parse.quote(f'"{domain}"')
+    code, body = get(f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={q}&srlimit=5&format=json")
+    try:
+        return json.loads(body)["query"]["searchinfo"]["totalhits"] if code == 200 else 0
+    except Exception:
+        return 0
+
+
+def trademark_flag(name):
+    """Heuristic only: a Wikidata entity with exactly this name that looks like a company/brand."""
+    code, body = get("https://www.wikidata.org/w/api.php?action=wbsearchentities&language=en&limit=8&format=json&search="
+                     + urllib.parse.quote(name))
+    try:
+        for e in json.loads(body).get("search", []):
+            if e.get("label", "").replace(" ", "").lower() == name.lower() and BRAND_DESC.search(e.get("description", "")):
+                return e.get("description", "")[:60]
+    except Exception:
+        pass
+    return ""
+
+
 def load_cache():
     try:
         return json.loads(CACHE.read_text())
@@ -156,16 +196,22 @@ def evaluate(domain):
     terms, sector, title = content_score(domain, h["stamps"])
     if terms < MIN_CONTENT:
         return domain, "weak", None
+    paths = inner_pages(domain)
+    if paths < MIN_PATHS:
+        return domain, "weak", None
+    wiki = wikipedia_mentions(domain)
     name = domain[:-4]
-    score = (terms * 6 + min(h["pages"], 5000) // 8 + h["snapshots"] + age * 2
+    tm = trademark_flag(name)
+    score = (paths * 8 + min(wiki, 5) * 15 - (40 if tm else 0) + terms * 6 + min(h["pages"], 5000) // 8 + h["snapshots"] + age * 2
              + max(0, 14 - len(name)) + (8 if h["last"] >= 2018 else 0))
     return domain, "hit", {"domain": domain, "score": score, "sector": sector, "title": title,
                            "age_years": age, "pages": h["pages"], "snapshots": h["snapshots"],
                            "first": h["first"], "last": h["last"], "terms": terms,
+                           "paths": paths, "wiki": wiki, "tm": tm,
                            "wayback": f"https://web.archive.org/web/{h['last']}0101000000*/{domain}"}
 
 
-FIELDS = ["domain", "score", "sector", "title", "age_years", "pages", "snapshots", "first", "last", "terms", "wayback"]
+FIELDS = ["domain", "score", "sector", "title", "age_years", "pages", "snapshots", "first", "last", "terms", "paths", "wiki", "tm", "wayback"]
 
 
 def main():
@@ -185,8 +231,8 @@ def main():
     old = []
     if prev.exists():
         for r in csv.DictReader(prev.open()):
-            if r.get("terms"):                       # drop rows from older, weaker versions
-                for k in ("score", "age_years", "pages", "snapshots", "first", "last", "terms"):
+            if r.get("paths") not in (None, ""):     # drop rows from older, weaker versions
+                for k in ("score", "age_years", "pages", "snapshots", "first", "last", "terms", "paths", "wiki"):
                     r[k] = int(r[k])
                 old.append(dict(r))
     merged = {r["domain"]: r for r in old}
@@ -204,11 +250,12 @@ def main():
     lines = [f"# Free domains that were serious sites ({stamp})\n",
              f"This run: {len(cands)} checked, {len(hits)} new hits. Total kept: {len(results)}. "
              "Content judged from Wayback only. Re-verify availability and open the archive before buying.\n",
-             "| # | Domain | Sector | Was | Pages | Age | Last seen | Archive | Buy |",
-             "|---|---|---|---|---|---|---|---|---|"]
+             "| # | Domain | Sector | Was | Pages | Sections | Wikipedia | Age | Last seen | Brand check | Archive | Buy |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for i, r in enumerate(results[:100], 1):
         title = str(r["title"]).replace("|", "/")
-        lines.append(f"| {i} | {r['domain']} | {r['sector']} | {title} | {r['pages']} | {r['age_years']}y | {r['last']} | "
+        lines.append(f"| {i} | {r['domain']} | {r['sector']} | {title} | {r['pages']} | {r['paths']} | {r['wiki']} | {r['age_years']}y | {r['last']} | "
+                     f"{('⚠ ' + r['tm']) if r['tm'] else 'ok'} [USPTO](https://tmsearch.uspto.gov) [TMview](https://www.tmdn.org/tmview/) | "
                      f"[wayback]({r['wayback']}) | [Porkbun](https://porkbun.com/checkout/search?q={r['domain']}) / "
                      f"[Namecheap](https://www.namecheap.com/domains/registration/results/?domain={r['domain']}) |")
     (HERE / "results.md").write_text("\n".join(lines) + "\n")
