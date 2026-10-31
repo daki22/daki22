@@ -10,10 +10,17 @@ concurrency: domain-hunter
 jobs:
   hunt:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@v4
-      - run: python3 domain-hunter/hunter.py
+      - name: Git identity
+        run: |
+          git config user.name "domain-hunter"
+          git config user.email "domain-hunter@users.noreply.github.com"
+      - name: Hunt (pushes progress as it finds domains)
+        env:
+          DOMAIN_HUNTER_PUSH: "1"
+        run: python3 domain-hunter/hunter.py
       - name: Job summary
         run: cat domain-hunter/results.md >> "$GITHUB_STEP_SUMMARY"
       - name: Commit results

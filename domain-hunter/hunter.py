@@ -9,8 +9,8 @@ Only free sources (Verisign RDAP + Wayback Machine). Pipeline:
                     services/innovation vocabulary, reject spam/blog/parked pages
   5. rank by content first, write results.md / results.csv, notify top finds
 """
-import csv, itertools, json, random, re, sys, time, urllib.error, urllib.parse, urllib.request
-from concurrent.futures import ThreadPoolExecutor
+import csv, itertools, json, os, random, re, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +22,8 @@ MIN_PAGES = 150             # archived HTML pages: only large, serious sites
 MIN_CONTENT = 10            # distinct business terms in best capture
 MIN_PATHS = 2               # 'careers', 'investors', 'services'... sections that existed
 MAX_LEN = 18
+PUSH_EVERY = 180            # seconds between progress pushes
+DEADLINE_MIN = 115          # stop before the workflow timeout so the final save always happens
 KEEP_DAYS = 90
 UA = {"User-Agent": "domain-hunter/3.0 (personal research)"}
 CACHE = HERE / "cache.json"
@@ -214,19 +216,7 @@ def evaluate(domain):
 FIELDS = ["domain", "score", "sector", "title", "age_years", "pages", "snapshots", "first", "last", "terms", "paths", "wiki", "tm", "wayback"]
 
 
-def main():
-    cache = load_cache()
-    cands = candidates(cache)
-    print(f"checking {len(cands)} new candidates", file=sys.stderr)
-    hits = []
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        for d, status, res in ex.map(evaluate, cands):
-            if status != "retry":
-                cache[d] = time.time()
-            if res:
-                hits.append(res)
-    CACHE.write_text(json.dumps(cache))
-
+def read_old():
     prev = HERE / "results.csv"
     old = []
     if prev.exists():
@@ -235,34 +225,85 @@ def main():
                 for k in ("score", "age_years", "pages", "snapshots", "first", "last", "terms", "paths", "wiki"):
                     r[k] = int(r[k])
                 old.append(dict(r))
-    merged = {r["domain"]: r for r in old}
-    merged.update({r["domain"]: r for r in hits})
-    ranked = sorted(merged.values(), key=lambda r: -r["score"])[:150]
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        still = list(ex.map(lambda r: is_free(r["domain"]), ranked))
-    results = [r for r, ok in zip(ranked, still) if ok is not False]
-    hits = [r for r in hits if any(r["domain"] == x["domain"] for x in results)]
+    return old
 
-    with prev.open("w", newline="") as f:
+
+def write_outputs(results, checked, new_hits):
+    results = sorted(results, key=lambda r: -r["score"])[:300]
+    with (HERE / "results.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader(); w.writerows(results)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines = [f"# Free domains that were serious sites ({stamp})\n",
-             f"This run: {len(cands)} checked, {len(hits)} new hits. Total kept: {len(results)}. "
+             f"This run so far: {checked} checked, {len(new_hits)} new hits. Total kept: {len(results)}. "
              "Content judged from Wayback only. Re-verify availability and open the archive before buying.\n",
              "| # | Domain | Sector | Was | Pages | Sections | Wikipedia | Age | Last seen | Brand check | Archive | Buy |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for i, r in enumerate(results[:100], 1):
         title = str(r["title"]).replace("|", "/")
-        lines.append(f"| {i} | {r['domain']} | {r['sector']} | {title} | {r['pages']} | {r['paths']} | {r['wiki']} | {r['age_years']}y | {r['last']} | "
-                     f"{('⚠ ' + r['tm']) if r['tm'] else 'ok'} [USPTO](https://tmsearch.uspto.gov) [TMview](https://www.tmdn.org/tmview/) | "
+        lines.append(f"| {i} | {r['domain']} | {r['sector']} | {title} | {r['pages']} | {r['paths']} | {r['wiki']} | "
+                     f"{r['age_years']}y | {r['last']} | "
+                     f"{('WARNING ' + r['tm']) if r['tm'] else 'ok'} [USPTO](https://tmsearch.uspto.gov) [TMview](https://www.tmdn.org/tmview/) | "
                      f"[wayback]({r['wayback']}) | [Porkbun](https://porkbun.com/checkout/search?q={r['domain']}) / "
                      f"[Namecheap](https://www.namecheap.com/domains/registration/results/?domain={r['domain']}) |")
     (HERE / "results.md").write_text("\n".join(lines) + "\n")
     top = "\n".join(f"{i}. **{r['domain']}** ({r['sector']}, \"{r['title']}\", {r['pages']} pages, last seen {r['last']})"
-                    for i, r in enumerate(sorted(hits, key=lambda r: -r["score"])[:10], 1))
+                    for i, r in enumerate(sorted(new_hits, key=lambda r: -r["score"])[:10], 1))
     (HERE / "top_new.md").write_text(top or "No new hits this run.")
-    print("\n".join(lines[:25]))
+    return lines
+
+
+_last_push = 0.0
+
+
+def save_and_push(results, checked, new_hits, cache, force=False):
+    """Persist progress right away; push to GitHub at most every PUSH_EVERY seconds."""
+    global _last_push
+    write_outputs(results, checked, new_hits)
+    CACHE.write_text(json.dumps(cache))
+    if os.environ.get("DOMAIN_HUNTER_PUSH") and (force or time.time() - _last_push > PUSH_EVERY):
+        _last_push = time.time()
+        paths = [str(HERE / n) for n in ("results.md", "results.csv", "cache.json")]
+        subprocess.run(["git", "add", *paths], check=False)
+        if subprocess.run(["git", "commit", "-qm", "domain-hunter: progress"], check=False).returncode == 0:
+            subprocess.run("git pull --rebase -q -X theirs && git push -q", shell=True, check=False)
+
+
+def main():
+    cache = load_cache()
+    cands = candidates(cache)
+    print(f"checking {len(cands)} new candidates", file=sys.stderr)
+    merged = {r["domain"]: r for r in read_old()}
+    hits, checked, deadline = [], 0, time.time() + DEADLINE_MIN * 60
+    ex = ThreadPoolExecutor(max_workers=6)
+    futs = [ex.submit(evaluate, d) for d in cands]
+    try:
+        for fut in as_completed(futs):
+            d, status, res = fut.result()
+            checked += 1
+            if status != "retry":
+                cache[d] = time.time()
+            if res:
+                hits.append(res)
+                merged[d] = res
+                print(f"HIT {d} score={res['score']} {res['sector']} {res['title']}", file=sys.stderr)
+                save_and_push(list(merged.values()), checked, hits, cache)
+            if time.time() > deadline:
+                print("time budget reached, stopping", file=sys.stderr)
+                break
+    finally:
+        for f in futs:
+            f.cancel()
+        ex.shutdown(wait=False, cancel_futures=True)
+
+    # final pass: drop names that got registered in the meantime
+    ranked = sorted(merged.values(), key=lambda r: -r["score"])[:150]
+    with ThreadPoolExecutor(max_workers=6) as ex2:
+        still = list(ex2.map(lambda r: is_free(r["domain"]), ranked))
+    results = [r for r, ok in zip(ranked, still) if ok is not False]
+    hits = [r for r in hits if any(r["domain"] == x["domain"] for x in results)]
+    save_and_push(results, checked, hits, cache, force=True)
+    print((HERE / "results.md").read_text()[:3000])
 
 
 if __name__ == "__main__":
