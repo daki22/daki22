@@ -16,10 +16,10 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 BATCH = 2500
-MIN_SNAPSHOTS = 12
-MIN_AGE_YEARS = 5
-MIN_PAGES = 15              # archived HTML pages: filters out one-page sites
-MIN_CONTENT = 7             # distinct business terms in best capture
+MIN_SNAPSHOTS = 24
+MIN_AGE_YEARS = 7
+MIN_PAGES = 150             # archived HTML pages: only large, serious sites
+MIN_CONTENT = 10            # distinct business terms in best capture
 MAX_LEN = 18
 KEEP_DAYS = 90
 UA = {"User-Agent": "domain-hunter/3.0 (personal research)"}
@@ -76,8 +76,8 @@ def history(domain):
         return None
     # site size: number of distinct archived HTML pages
     code, body = get("https://web.archive.org/cdx/search/cdx?output=json&fl=urlkey&collapse=urlkey"
-                     f"&filter=statuscode:200&filter=mimetype:text/html&matchType=domain&url={domain}&limit=3000",
-                     maxbytes=3_000_000)
+                     f"&filter=statuscode:200&filter=mimetype:text/html&matchType=domain&url={domain}&limit=10000",
+                     maxbytes=8_000_000)
     pages = max(0, len(json.loads(body)) - 1) if code == 200 and body else 0
     return {"snapshots": len(ok), "first": int(ok[0][:4]), "last": int(ok[-1][:4]),
             "stamps": [ok[int(len(ok) * f)] for f in (0.2, 0.45, 0.7)] + [ok[-1]], "pages": pages}
@@ -157,7 +157,7 @@ def evaluate(domain):
     if terms < MIN_CONTENT:
         return domain, "weak", None
     name = domain[:-4]
-    score = (terms * 6 + min(h["pages"], 600) // 5 + h["snapshots"] + age * 2
+    score = (terms * 6 + min(h["pages"], 5000) // 8 + h["snapshots"] + age * 2
              + max(0, 14 - len(name)) + (8 if h["last"] >= 2018 else 0))
     return domain, "hit", {"domain": domain, "score": score, "sector": sector, "title": title,
                            "age_years": age, "pages": h["pages"], "snapshots": h["snapshots"],
