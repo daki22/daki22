@@ -16,6 +16,7 @@ class Domain:
     status: Optional[str] = None  # npr. "pendingDelete", "expired", "auction"
     source: str = "import"
     spam: bool = False
+    registered: Optional[bool] = None  # None = nepoznato, False = SLOBODAN
     # popunjava valuation
     value_eur: float = 0.0
     score: float = 0.0

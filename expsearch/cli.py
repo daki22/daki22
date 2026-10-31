@@ -10,7 +10,7 @@ from .valuation import estimate, load_words
 
 
 def search(domains, min_value=5000, tlds=None, max_price=None, max_len=None,
-           no_hyphen=False, no_digits=False, live=False, words=None):
+           no_hyphen=False, no_digits=False, live=False, words=None, available=False):
     res = []
     for d in domains:
         if tlds and d.tld not in tlds: continue
@@ -18,7 +18,8 @@ def search(domains, min_value=5000, tlds=None, max_price=None, max_len=None,
         if no_hyphen and "-" in d.sld: continue
         if no_digits and any(c.isdigit() for c in d.sld): continue
         if max_price is not None and d.price and d.price > max_price: continue
-        if live: enrich(d)
+        if live or available: enrich(d)
+        if available and d.registered is not False: continue  # samo slobodni (RDAP 404)
         estimate(d, words)
         if d.value_eur >= min_value:
             res.append(d)
@@ -48,6 +49,7 @@ def main(argv=None):
     s.add_argument("--no-hyphen", action="store_true")
     s.add_argument("--no-digits", action="store_true")
     s.add_argument("--live", action="store_true", help="obogati sa RDAP + Wayback (internet, sporije)")
+    s.add_argument("--available", action="store_true", help="samo slobodni domeni (RDAP potvrdi da nisu registrovani); implicira --live")
     s.add_argument("--wordlist", help="fajl sa rečima (jedna po liniji)")
     s.add_argument("--limit", type=int, default=50)
     s.add_argument("--json", dest="json_out"); s.add_argument("--csv", dest="csv_out")
@@ -68,7 +70,7 @@ def main(argv=None):
         domains += read_domains(f)
     print(f"Učitano {len(domains)} domena", file=sys.stderr)
     rows = search(domains, a.min_value, set(t.lower().lstrip(".") for t in a.tld) if a.tld else None,
-                  a.max_price, a.max_len, a.no_hyphen, a.no_digits, a.live, words)[: a.limit]
+                  a.max_price, a.max_len, a.no_hyphen, a.no_digits, a.live, words, a.available)[: a.limit]
     _table(rows)
     if a.json_out:
         json.dump([d.to_dict() for d in rows], open(a.json_out, "w"), indent=2, ensure_ascii=False, default=str)
