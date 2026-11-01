@@ -356,7 +356,7 @@ pre.log .warn{color:var(--warn)}
     else if(st&&st.sinceMs!=null)body.appendChild(h('div',{class:'meta',style:'margin-top:8px',text:'Poslednji zapis pre '+ago(st.sinceMs)}))}
 
   function renderChips(){var box=$('#stchips');box.textContent='';
-    [0,1,2,3].forEach(function(k){box.appendChild(h('button',{class:'tog',type:'button','aria-pressed':S.f.st[k]?'true':'false',text:['Pogoci','Istorija ok','Slabi','Odbačeni'][k],
+    [0,1,2,3].forEach(function(k){box.appendChild(h('button',{class:'tog',type:'button','aria-pressed':S.f.st[k]?'true':'false',text:(S.f.st[k]?'✓ ':'')+['Pogoci','Istorija ok','Slabi','Odbačeni'][k],
       onclick:function(){S.f.st[k]=S.f.st[k]?0:1;saveF();render()}}))})}
 
   function card(d){var fresh=!!S.newSet[d.domain];
@@ -384,7 +384,8 @@ pre.log .warn{color:var(--warn)}
     if(!S.results&&!S.watch){box.appendChild(h('div',{class:'note',text:!cfg().token?'Podesi token u podešavanjima (⚙).':(S.err?errMsg(S.err):'Čekam listu domena…')}));return}
     var all=domains(),list=filtered();
     $('#fcount').textContent=list.length+' / '+all.length;
-    if(!list.length)box.appendChild(h('div',{class:'note',text:'Nijedan domen ne odgovara filterima.'}));
+    var anySt=[0,1,2,3].some(function(k){return S.f.st[k]});
+    if(!list.length)box.appendChild(h('div',{class:'note',text:!anySt?'Nijedan status nije uključen (Pogoci, Istorija ok, Slabi, Odbačeni). Uključi bar jedan, ili dodirni Poništi filtere.':'Nijedan domen ne odgovara filterima.'}));
     list.forEach(function(d){box.appendChild(card(d))});
     var n=Object.keys(S.newSet).length;$('#newbanner').hidden=!n;
     if(n)$('#newtext').textContent=n+(n===1?' novi domen':' novih domena')+' od tvoje poslednje posete'}
