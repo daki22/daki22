@@ -88,6 +88,10 @@ main{display:flex;flex-direction:column;gap:14px;padding-top:14px}
 .wd{display:inline-flex;align-items:center;font-size:12px;font-weight:700;letter-spacing:.03em;border-radius:6px;padding:3px 8px;background:var(--warn);color:#fff}
 .dom.wdc{box-shadow:inset 3px 0 0 var(--warn)}
 .dom.wiki.wdc{box-shadow:inset 3px 0 0 var(--accent),inset 6px 0 0 var(--warn)}
+.nm{display:inline-flex;align-items:center;font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;background:var(--surface2);color:var(--text)}
+.nm.g{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
+.nm.m{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.nm.b{color:var(--muted)}
 .wkrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dname{font-family:var(--mono);font-weight:600;font-size:16px;overflow-wrap:anywhere;flex:1;min-width:0}
@@ -156,13 +160,14 @@ pre.log .warn{color:var(--warn)}
           <div class="wide"><div class="chips"><button class="tog" id="f-wiki" type="button" aria-pressed="false">Samo sa Wikipedijom</button><button class="tog" id="f-wd" type="button" aria-pressed="false">Samo ugašene organizacije</button></div></div>
           <label>Min. backlink subneta<input id="f-links" type="number" min="0" inputmode="numeric"></label>
           <label>Min. starost (god.)<input id="f-age" type="number" min="0" inputmode="numeric"></label>
+          <label>Min. ocena imena (0-100)<input id="f-name" type="number" min="0" max="100" inputmode="numeric"></label>
           <label>Min. stranica<input id="f-pages" type="number" min="0" inputmode="numeric"></label>
           <label>Viđen najkasnije od godine<input id="f-last" type="number" min="1990" inputmode="numeric" placeholder="npr. 2024"></label>
           <label class="wide">Sektor
             <select id="f-sector"><option value="">Svi</option></select></label>
           <label class="wide">Redosled
             <select id="f-sort">
-              <option value="wiki">Wikipedia pomeni</option><option value="links">Backlinkovi</option><option value="score">Ocena hunter-a</option>
+              <option value="name">Ocena imena</option><option value="wiki">Wikipedia pomeni</option><option value="links">Backlinkovi</option><option value="score">Ocena hunter-a</option>
               <option value="age">Starost</option><option value="pages">Stranice</option><option value="last">Poslednji put viđen</option>
             </select></label>
           <div class="wide"><button class="btn small" id="freset" type="button">Poništi filtere</button></div>
@@ -211,7 +216,7 @@ pre.log .warn{color:var(--warn)}
 
   function store(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){return null}}
   function cfg(){return {token:store('lnd.token')||'',repo:store('lnd.repo')||DEFAULT_REPO,notify:store('lnd.notify')==='1'}}
-  function loadF(){var d={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links',wiki:0,wd:0};
+  function loadF(){var d={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links',wiki:0,wd:0,name:''};
     try{var j=JSON.parse(store('lnd.f')||'null');if(j)for(var k in j)d[k]=j[k]}catch(e){}return d}
   function saveF(){store('lnd.f',JSON.stringify(S.f))}
   function num(v){var n=parseFloat(v);return isFinite(n)?n:null}
@@ -259,11 +264,11 @@ pre.log .warn{color:var(--warn)}
 
   /* ---------- domain model ---------- */
   function domains(){var map={};
-    (S.results?parseCsv(S.results):[]).forEach(function(r){map[r.domain]={domain:r.domain,status:0,verdict:r.sector,sector:r.sector||'',score:num(r.score),title:r.title,age:num(r.age_years),pages:num(r.pages),snaps:num(r.snapshots),last:num(r.last),links:num(r.links),rank:num(r.rank),way:r.wayback,wiki:num(r.wiki)||0,wl:r.wiki_langs||'',wd:r.wd||''}});
+    (S.results?parseCsv(S.results):[]).forEach(function(r){map[r.domain]={domain:r.domain,status:0,verdict:r.sector,sector:r.sector||'',score:num(r.score),title:r.title,age:num(r.age_years),pages:num(r.pages),snaps:num(r.snapshots),last:num(r.last),links:num(r.links),rank:num(r.rank),way:r.wayback,wiki:num(r.wiki)||0,wl:r.wiki_langs||'',wd:r.wd||'',nm:num(r.name_score)}});
     (S.watch?parseCsv(S.watch):[]).forEach(function(r){var p=map[r.domain]||{domain:r.domain,sector:'',score:null};
       map[r.domain]={domain:r.domain,status:num(r.priority)==null?(p.status||0):num(r.priority),verdict:r.verdict||p.verdict,sector:p.sector,score:p.score,
         title:r.title||p.title,age:num(r.age_years)!=null?num(r.age_years):p.age,pages:num(r.pages)!=null?num(r.pages):p.pages,snaps:num(r.snapshots)!=null?num(r.snapshots):p.snaps,
-        last:num(r.last)!=null?num(r.last):p.last,links:num(r.links)!=null?num(r.links):p.links,rank:num(r.rank)!=null?num(r.rank):p.rank,way:r.wayback||p.way,wiki:(num(r.wiki)!=null&&num(r.wiki)>0)?num(r.wiki):(p.wiki||0),wl:r.wiki_langs||p.wl||'',wd:r.wd||p.wd||''}});
+        last:num(r.last)!=null?num(r.last):p.last,links:num(r.links)!=null?num(r.links):p.links,rank:num(r.rank)!=null?num(r.rank):p.rank,way:r.wayback||p.way,wiki:(num(r.wiki)!=null&&num(r.wiki)>0)?num(r.wiki):(p.wiki||0),wl:r.wiki_langs||p.wl||'',wd:r.wd||p.wd||'',nm:num(r.name_score)!=null?num(r.name_score):p.nm}});
     return Object.keys(map).map(function(k){return map[k]})}
 
   function detectNew(){
@@ -298,8 +303,9 @@ pre.log .warn{color:var(--warn)}
       if(f.sector&&d.sector!==f.sector)return false;
       if(f.wiki&&!(d.wiki>0))return false;
       if(f.wd&&!d.wd)return false;
+      if(f.name!==''&&f.name!=null&&(d.nm||0)<+f.name)return false;
       if(q&&(d.domain+' '+(d.title||'')).toLowerCase().indexOf(q)<0)return false;return true});
-    var key={wiki:'wiki',links:'links',score:'score',age:'age',pages:'pages',last:'last'}[f.sort]||'links';
+    var key={name:'nm',wiki:'wiki',links:'links',score:'score',age:'age',pages:'pages',last:'last'}[f.sort]||'links';
     list.sort(function(a,b){var na=S.newSet[a.domain]?1:0,nb=S.newSet[b.domain]?1:0;if(na!==nb)return nb-na;
       if(a.status!==b.status)return a.status-b.status;return (b[key]||0)-(a[key]||0)});
     return list}
@@ -354,7 +360,10 @@ pre.log .warn{color:var(--warn)}
       onclick:function(){S.f.st[k]=S.f.st[k]?0:1;saveF();render()}}))})}
 
   function card(d){var fresh=!!S.newSet[d.domain];
-    var head=h('div',{class:'dhead'},h('div',{class:'dname',text:d.domain}),fresh?h('span',{class:'st new',text:'NOVO'}):null,h('span',{class:'st s'+d.status,text:STATUS_LABEL[d.status]||''}));
+    var nmChip=null;
+    if(d.nm!=null){var lab=d.nm>=75?'odlično':d.nm>=55?'dobro':d.nm>=40?'srednje':'slabo';
+      nmChip=h('span',{class:'nm '+(d.nm>=75?'g':d.nm>=55?'m':'b'),title:'Ocena imena domena',text:'IME '+d.nm+' · '+lab})}
+    var head=h('div',{class:'dhead'},h('div',{class:'dname',text:d.domain}),fresh?h('span',{class:'st new',text:'NOVO'}):null,nmChip,h('span',{class:'st s'+d.status,text:STATUS_LABEL[d.status]||''}));
     var mx=h('div',{class:'mx'});
     function m(v,l){mx.appendChild(h('div',null,h('b',{text:v==null?'–':String(v)}),h('span',{text:l})))}
     m(d.links,'backlink subneta');m(d.age==null?null:d.age+' g.','starost');m(d.pages,'stranica');m(d.last,'viđen');
@@ -451,9 +460,9 @@ pre.log .warn{color:var(--warn)}
   $('#settings').addEventListener('click',openSettings);
   $('#markseen').addEventListener('click',function(){store('lnd.seen',JSON.stringify(domains().map(function(d){return d.domain})));S.newSet={};render()});
   $('#sheet').addEventListener('click',function(e){if(e.target===this)this.hidden=true});
-  var FIELDS=[['q','q'],['f-links','links'],['f-age','age'],['f-pages','pages'],['f-last','last'],['f-sector','sector'],['f-sort','sort']];
+  var FIELDS=[['q','q'],['f-name','name'],['f-links','links'],['f-age','age'],['f-pages','pages'],['f-last','last'],['f-sector','sector'],['f-sort','sort']];
   FIELDS.forEach(function(p){var el=$('#'+p[0]);el.value=S.f[p[1]]==null?'':S.f[p[1]];el.addEventListener('input',function(){S.f[p[1]]=el.value;saveF();renderList()})});
-  $('#freset').addEventListener('click',function(){S.f={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links',wiki:0,wd:0};saveF();FIELDS.forEach(function(p){$('#'+p[0]).value=S.f[p[1]]});$('#f-wiki').setAttribute('aria-pressed','false');$('#f-wd').setAttribute('aria-pressed','false');render()});
+  $('#freset').addEventListener('click',function(){S.f={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links',wiki:0,wd:0,name:''};saveF();FIELDS.forEach(function(p){$('#'+p[0]).value=S.f[p[1]]});$('#f-wiki').setAttribute('aria-pressed','false');$('#f-wd').setAttribute('aria-pressed','false');render()});
   var wb=$('#f-wiki');wb.setAttribute('aria-pressed',S.f.wiki?'true':'false');
   wb.addEventListener('click',function(){S.f.wiki=S.f.wiki?0:1;wb.setAttribute('aria-pressed',S.f.wiki?'true':'false');saveF();render()});
   var wdbtn=$('#f-wd');wdbtn.setAttribute('aria-pressed',S.f.wd?'true':'false');
