@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0c1211">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Lov na domene</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one sticky status strip, a run card, three tabs (domains / log / commands). Cool neutrals, teal accent. */
+:root{
+  --bg:#f2f5f4; --surface:#ffffff; --surface2:#e9eeec; --text:#13201b; --muted:#566660; --line:#d8e0dc;
+  --accent:#0a7a6a; --accent-ink:#ffffff; --good:#14803c; --warn:#a05a06; --bad:#b3261e; --new:#b4540a;
+  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0c1211; --surface:#131b19; --surface2:#1b2523; --text:#e5eeea; --muted:#8c9d96; --line:#25322e;
+  --accent:#3fd0b4; --accent-ink:#06211c; --good:#4ade80; --warn:#f0b04a; --bad:#ff8a80; --new:#ffb066; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1211; --surface:#131b19; --surface2:#1b2523; --text:#e5eeea; --muted:#8c9d96; --line:#25322e;
+  --accent:#3fd0b4; --accent-ink:#06211c; --good:#4ade80; --warn:#f0b04a; --bad:#ff8a80; --new:#ffb066; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{margin:0;color:var(--text);font:15px/1.45 var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:30}
+button,input,select{font:inherit;color:inherit}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);padding:12px 0 10px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)}
+.top h1{font-size:20px;line-height:1.1;margin:0;font-weight:700;letter-spacing:-.01em}
+.top .sub{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.top .grow{flex:1;min-width:0}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 12px;min-height:40px;cursor:pointer;font-weight:600;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.btn.confirm{background:var(--bad);color:#fff;border-color:var(--bad)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn.small{min-height:34px;padding:5px 10px;font-size:13px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{display:flex;flex-direction:column;gap:14px;padding-top:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card h2{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.runhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;letter-spacing:.04em;background:var(--surface2)}
+.badge.run{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.badge.ok{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+.badge.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.badge.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.badge.run .dot{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.badge.run .dot{animation:none}}
+.meta{font-size:13px;color:var(--muted)}
+.bar{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin:12px 0 6px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .4s}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px;margin-top:10px}
+.stat b{display:block;font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.why{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;background:var(--surface2);white-space:nowrap}
+.chip b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface2);border-radius:10px;padding:3px;gap:3px}
+.tabs button{border:0;background:transparent;border-radius:8px;padding:9px 6px;font-weight:600;color:var(--muted);cursor:pointer;min-height:40px}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.banner{border:1px solid color-mix(in srgb,var(--new) 50%,var(--line));background:color-mix(in srgb,var(--new) 12%,var(--surface));border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.note{border:1px dashed var(--line);border-radius:10px;padding:12px;color:var(--muted);font-size:14px}
+.filters summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;min-height:36px}
+.filters summary::-webkit-details-marker{display:none}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.fgrid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.fgrid input,.fgrid select,.search{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px}
+.fgrid .wide{grid-column:1/-1}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.tog{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;min-height:36px}
+.tog[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.list{display:flex;flex-direction:column;gap:10px}
+.dom{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.dom.fresh{border-color:var(--new)}
+.dhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dname{font-family:var(--mono);font-weight:600;font-size:16px;overflow-wrap:anywhere;flex:1;min-width:0}
+.st{font-size:11px;font-weight:700;letter-spacing:.05em;border-radius:6px;padding:2px 7px;background:var(--surface2);color:var(--muted)}
+.st.s0{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+.st.s1{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.st.s2{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.st.new{background:var(--new);color:#fff}
+.was{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.mx{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.mx div{background:var(--surface2);border-radius:8px;padding:6px 8px;min-width:0}
+.mx b{display:block;font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+.mx span{font-size:11px;color:var(--muted)}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.acts a,.acts button{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600;text-decoration:none;color:var(--text);cursor:pointer;min-height:34px;display:inline-flex;align-items:center}
+.acts a:hover,.acts button:hover{border-color:var(--accent)}
+pre.log{margin:0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:62vh;overflow:auto}
+pre.log .hit{color:var(--good);font-weight:600}
+pre.log .warn{color:var(--warn)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.runs{display:flex;flex-direction:column;gap:8px}
+.runs a{color:var(--accent);text-decoration:none;font-size:13px}
+.sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:flex;align-items:flex-end}
+.sheet>div{background:var(--surface);width:100%;max-height:82vh;overflow:auto;border-radius:14px 14px 0 0;padding:16px max(16px,env(safe-area-inset-left,0px)) calc(20px + env(safe-area-inset-bottom,0px))}
+.sheet h3{margin:0 0 8px;font-family:var(--mono);overflow-wrap:anywhere}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:10px 14px;border-radius:10px;z-index:50;max-width:calc(100% - 32px);font-size:14px}
+[hidden]{display:none!important}
+@media (max-width:380px){.mx{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="grow">
+    <h1>Lov na domene</h1>
+    <div class="sub" id="fresh">učitavam…</div>
+  </div>
+  <button class="btn" id="refresh" type="button">Osveži</button>
+  <button class="btn" id="settings" type="button" aria-label="Podešavanja">⚙</button>
+</header>
+
+<main>
+  <div class="note" id="nomcp" hidden></div>
+  <div class="note" id="mcperr" hidden></div>
+
+  <section class="card" id="runcard" aria-live="polite">
+    <h2>Hunter</h2>
+    <div id="runbody" class="meta">Čekam podatke…</div>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="t-domains" aria-selected="true" type="button">Domeni</button>
+    <button role="tab" id="t-log" aria-selected="false" type="button">Log</button>
+    <button role="tab" id="t-cmd" aria-selected="false" type="button">Komande</button>
+  </div>
+
+  <section id="p-domains">
+    <div class="banner" id="newbanner" hidden>
+      <span id="newtext"></span><button class="btn small" id="markseen" type="button">Viđeno</button>
+    </div>
+    <div class="card filters" style="margin-top:10px">
+      <input class="search" id="q" type="search" placeholder="Traži domen ili naslov" aria-label="Traži">
+      <details style="margin-top:8px" id="fdet">
+        <summary><span>Filteri i redosled</span><span class="meta" id="fcount"></span></summary>
+        <div class="fgrid">
+          <div class="wide"><div class="chips" id="stchips"></div></div>
+          <label>Min. backlink subneta<input id="f-links" type="number" min="0" inputmode="numeric"></label>
+          <label>Min. starost (god.)<input id="f-age" type="number" min="0" inputmode="numeric"></label>
+          <label>Min. stranica<input id="f-pages" type="number" min="0" inputmode="numeric"></label>
+          <label>Viđen najkasnije od godine<input id="f-last" type="number" min="1990" inputmode="numeric" placeholder="npr. 2024"></label>
+          <label class="wide">Sektor
+            <select id="f-sector"><option value="">Svi</option></select></label>
+          <label class="wide">Redosled
+            <select id="f-sort">
+              <option value="links">Backlinkovi</option><option value="score">Ocena hunter-a</option>
+              <option value="age">Starost</option><option value="pages">Stranice</option><option value="last">Poslednji put viđen</option>
+            </select></label>
+          <div class="wide"><button class="btn small" id="freset" type="button">Poništi filtere</button></div>
+        </div>
+      </details>
+    </div>
+    <div class="list" id="list" style="margin-top:10px"></div>
+  </section>
+
+  <section id="p-log" hidden>
+    <div class="card"><h2>Status runa (status.md)</h2><pre class="log" id="logbox">Nema podataka.</pre></div>
+  </section>
+
+  <section id="p-cmd" hidden>
+    <div class="card" style="margin-bottom:10px">
+      <h2>Hunter</h2>
+      <div class="row">
+        <button class="btn primary" id="c-run" type="button">Pokreni novi run</button>
+        <button class="btn danger" id="c-stop" type="button">Zaustavi aktivni run</button>
+      </div>
+      <p class="meta" style="margin:8px 0 0">Run prolazi novu seriju domena i sam upisuje pogotke u listu. Traje do ~2 sata.</p>
+    </div>
+    <div class="card" style="margin-bottom:10px">
+      <h2>Provera backlinkova</h2>
+      <input class="search" id="c-bl" placeholder="domen1.com, domen2.com" aria-label="Domeni za proveru backlinkova">
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="c-blrun" type="button">Pokreni proveru</button></div>
+      <p class="meta" style="margin:8px 0 0">Common Crawl graf. Traje 5 do 15 minuta, rezultat se čita iz backlinks.md.</p>
+    </div>
+    <div class="card"><h2>Poslednji runovi</h2><div class="runs" id="runlist"><span class="meta">Nema podataka.</span></div></div>
+  </section>
+</main>
+
+<div class="sheet" id="sheet" hidden><div id="sheetbody"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  var DEFAULT_REPO='daki22/domain-hunter', REF='main';
+  var $=function(s,r){return (r||document).querySelector(s)};
+  function h(tag,attrs){var e=document.createElement(tag);attrs=attrs||{};
+    Object.keys(attrs).forEach(function(k){var v=attrs[k];if(v==null||v===false)return;
+      if(k==='class')e.className=v;else if(k==='text')e.textContent=v;else if(k.slice(0,2)==='on')e.addEventListener(k.slice(2),v);else e.setAttribute(k,v===true?'':v)});
+    for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;e.appendChild(typeof c==='string'?document.createTextNode(c):c)}return e}
+  var STATUS_LABEL={0:'POGODAK',1:'ISTORIJA OK',2:'SLAB, ALI VREDAN PAŽNJE',3:'SADRŽAJ ODBAČEN'};
+  var S={results:null,watch:null,status:null,runs:null,blruns:null,tab:'domains',updated:{},newSet:{},known:null,f:loadF(),err:null};
+
+  function store(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){return null}}
+  function cfg(){return {token:store('lnd.token')||'',repo:store('lnd.repo')||DEFAULT_REPO,notify:store('lnd.notify')==='1'}}
+  function loadF(){var d={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links'};
+    try{var j=JSON.parse(store('lnd.f')||'null');if(j)for(var k in j)d[k]=j[k]}catch(e){}return d}
+  function saveF(){store('lnd.f',JSON.stringify(S.f))}
+  function num(v){var n=parseFloat(v);return isFinite(n)?n:null}
+  function ago(ms){var s=Math.max(0,Math.round(ms/1000));if(s<60)return s+' s';var m=Math.round(s/60);if(m<60)return m+' min';var hh=Math.floor(m/60);return hh+' h '+(m%60)+' min'}
+  function toast(t){var e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){e.hidden=true},3800)}
+
+  function parseCsv(t){var rows=[],row=[],f='',q=false;
+    for(var i=0;i<t.length;i++){var c=t[i];
+      if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+      else if(c==='"')q=true;else if(c===','){row.push(f);f=''}
+      else if(c==='\n'){row.push(f);rows.push(row);row=[];f=''}else if(c!=='\r')f+=c}
+    if(f!==''||row.length){row.push(f);rows.push(row)}
+    var head=rows.shift()||[];
+    return rows.filter(function(r){return r.length>1}).map(function(r){var o={};head.forEach(function(k,i){o[k]=r[i]==null?'':r[i]});return o})}
+
+  /* ---------- GitHub API (token never leaves this phone, only goes to api.github.com) ---------- */
+  function api(path,opt){opt=opt||{};var c=cfg();
+    if(!c.token)return Promise.reject({code:'no_token'});
+    var headers={'Authorization':'Bearer '+c.token,'Accept':opt.raw?'application/vnd.github.raw+json':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+    if(opt.body)headers['Content-Type']='application/json';
+    return fetch('https://api.github.com/repos/'+c.repo+path,{method:opt.method||'GET',cache:'no-store',headers:headers,body:opt.body?JSON.stringify(opt.body):undefined}).then(function(r){
+      if(r.ok){if(opt.raw)return r.text();return r.status===204?null:r.json().catch(function(){return null})}
+      return r.text().then(function(t){throw {code:r.status,message:t.slice(0,200)}})},function(){throw {code:'network'}})}
+  function getFile(p){return api('/contents/'+p+'?ref='+REF,{raw:true})}
+
+  function errMsg(e){var c=e&&e.code;
+    if(c==='no_token')return 'Unesi GitHub token u podešavanjima (⚙).';
+    if(c===401)return 'Token nije važeći ili je istekao. Napravi novi u podešavanjima.';
+    if(c===403)return 'GitHub je odbio zahtev: token nema potrebnu dozvolu ili je prekoračen limit.';
+    if(c===404)return 'Nije nađeno: proveri ime repoa i da token ima pristup tom repou.';
+    if(c==='network')return 'Nema veze sa GitHub-om. Proveri internet.';
+    return 'Greška ('+(c||'?')+').'}
+
+  function loadFile(path,key){return getFile(path).then(function(t){S[key]=t;S.updated[key]=Date.now();delete S.updated[key+'_missing']},function(e){
+    if(e&&e.code===404){S.updated[key+'_missing']=true;if(S[key]==null)S[key]=null}else throw e})}
+  function loadRuns(wf,key){return api('/actions/workflows/'+wf+'/runs?per_page=4').then(function(j){S[key]=(j&&j.workflow_runs)||[];S.updated[key]=Date.now()})}
+
+  var polling=false;
+  function poll(){if(polling||!cfg().token)return;polling=true;
+    Promise.all([loadFile('results.csv','results'),loadFile('watchlist.csv','watch'),loadFile('status.md','status'),loadRuns('domain-hunter.yml','runs'),loadRuns('backlinks.yml','blruns')])
+      .then(function(){S.err=null;afterData()},function(e){S.err=e;render()})
+      .then(function(){polling=false})}
+
+  function afterData(){detectNew();fillSectors();render()}
+
+  /* ---------- domain model ---------- */
+  function domains(){var map={};
+    (S.results?parseCsv(S.results):[]).forEach(function(r){map[r.domain]={domain:r.domain,status:0,verdict:r.sector,sector:r.sector||'',score:num(r.score),title:r.title,age:num(r.age_years),pages:num(r.pages),snaps:num(r.snapshots),last:num(r.last),links:num(r.links),rank:num(r.rank),way:r.wayback}});
+    (S.watch?parseCsv(S.watch):[]).forEach(function(r){var p=map[r.domain]||{domain:r.domain,sector:'',score:null};
+      map[r.domain]={domain:r.domain,status:num(r.priority)==null?(p.status||0):num(r.priority),verdict:r.verdict||p.verdict,sector:p.sector,score:p.score,
+        title:r.title||p.title,age:num(r.age_years)!=null?num(r.age_years):p.age,pages:num(r.pages)!=null?num(r.pages):p.pages,snaps:num(r.snapshots)!=null?num(r.snapshots):p.snaps,
+        last:num(r.last)!=null?num(r.last):p.last,links:num(r.links)!=null?num(r.links):p.links,rank:num(r.rank)!=null?num(r.rank):p.rank,way:r.wayback||p.way}});
+    return Object.keys(map).map(function(k){return map[k]})}
+
+  function detectNew(){
+    var all=domains().map(function(d){return d.domain});if(!all.length)return;
+    var seen=null;try{seen=JSON.parse(store('lnd.seen')||'null')}catch(e){}
+    if(!seen){if(S.watch!==null||S.updated.watch_missing)store('lnd.seen',JSON.stringify(all));return}
+    var set={};seen.forEach(function(d){set[d]=1});
+    S.newSet={};all.forEach(function(d){if(!set[d])S.newSet[d]=1});
+    // local notification for domains that appeared while the app is open
+    if(S.known){var fresh=all.filter(function(d){return !S.known[d]});if(fresh.length)notifyNew(fresh)}
+    S.known={};all.forEach(function(d){S.known[d]=1})}
+  function notifyNew(list){if(!cfg().notify||!('Notification' in window)||Notification.permission!=='granted')return;
+    var body=list.slice(0,3).join(', ')+(list.length>3?' …':'');
+    try{if(navigator.vibrate)navigator.vibrate([120,60,120])}catch(e){}
+    if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(function(reg){reg.showNotification('Novi domen na listi',{body:body,tag:'lnd-new'})}).catch(function(){})
+    else try{new Notification('Novi domen na listi',{body:body})}catch(e){}}
+
+  function fillSectors(){var sel=$('#f-sector'),cur=S.f.sector,seen={};
+    domains().forEach(function(d){if(d.sector)seen[d.sector]=1});
+    var keys=Object.keys(seen).sort();
+    if(sel.dataset.n===String(keys.length))return;sel.dataset.n=String(keys.length);
+    sel.textContent='';sel.appendChild(h('option',{value:'',text:'Svi'}));
+    keys.forEach(function(k){sel.appendChild(h('option',{value:k,text:k}))});sel.value=cur}
+
+  function filtered(){var f=S.f,q=(f.q||'').toLowerCase();
+    var list=domains().filter(function(d){
+      if(!f.st[d.status])return false;
+      if(f.links!==''&&(d.links||0)<+f.links)return false;
+      if(f.age!==''&&(d.age||0)<+f.age)return false;
+      if(f.pages!==''&&(d.pages||0)<+f.pages)return false;
+      if(f.last!==''&&(d.last||0)<+f.last)return false;
+      if(f.sector&&d.sector!==f.sector)return false;
+      if(q&&(d.domain+' '+(d.title||'')).toLowerCase().indexOf(q)<0)return false;return true});
+    var key={links:'links',score:'score',age:'age',pages:'pages',last:'last'}[f.sort]||'links';
+    list.sort(function(a,b){var na=S.newSet[a.domain]?1:0,nb=S.newSet[b.domain]?1:0;if(na!==nb)return nb-na;
+      if(a.status!==b.status)return a.status-b.status;return (b[key]||0)-(a[key]||0)});
+    return list}
+
+  function parseStatus(t){if(!t)return null;
+    var lines=t.split('\n').filter(function(l){return l.indexOf('- ')===0});
+    var prog=null,hb=null,why=null,lastLine=lines[lines.length-1]||'';
+    lines.forEach(function(l){var m=l.match(/(\d+)\/(\d+) evaluated, (\d+) hits/);if(m)prog={done:+m[1],total:+m[2],hits:+m[3]};
+      var r=l.match(/requests (\d+), throttled(?:\(429\/503\))? (\d+)(?:, conn_errors (\d+))?/);if(r)hb={req:+r[1],thr:+r[2],err:r[3]==null?null:+r[3]};
+      var w=l.match(/ why: (.*)$/);if(w)why=w[1]});
+    var tm=lastLine.match(/^- (\d\d):(\d\d):(\d\d)/),sinceMs=null;
+    if(tm){var n=new Date(),t0=Date.UTC(n.getUTCFullYear(),n.getUTCMonth(),n.getUTCDate(),+tm[1],+tm[2],+tm[3]);if(t0>n.getTime()+60000)t0-=86400000;sinceMs=n.getTime()-t0}
+    return {prog:prog,hb:hb,why:why,sinceMs:sinceMs,lines:lines}}
+  var WHYL={rdap_registered:'već registrovano',rdap_FREE:'slobodno',passed_history:'prošlo istoriju',content_rejected:'sadržaj odbačen',wayback_error_http_None:'Wayback greška',pages_query_error_http_None:'ponovo pokušaj'};
+
+  function badge(run){if(!run)return h('span',{class:'badge',text:'NEMA RUNA'});
+    var st=run.status,c=run.conclusion;
+    if(st==='in_progress')return h('span',{class:'badge run'},h('span',{class:'dot'}),'RADI');
+    if(st==='queued'||st==='pending'||st==='waiting')return h('span',{class:'badge warn'},h('span',{class:'dot'}),'U REDU');
+    if(c==='success')return h('span',{class:'badge ok'},h('span',{class:'dot'}),'ZAVRŠEN');
+    if(c==='cancelled')return h('span',{class:'badge'},h('span',{class:'dot'}),'OTKAZAN');
+    return h('span',{class:'badge bad'},h('span',{class:'dot'}),'GREŠKA')}
+  function runtime(run){if(!run)return '';var s=Date.parse(run.run_started_at||run.created_at),e=run.status==='in_progress'?Date.now():Date.parse(run.updated_at);return ago(e-s)}
+
+  function renderRun(){var body=$('#runbody');body.textContent='';
+    if(!cfg().token){body.appendChild(h('div',{class:'meta',text:'Podesi GitHub token (⚙) da bi se prikazali podaci.'}));return}
+    var run=S.runs&&S.runs[0],st=parseStatus(S.status);
+    if(S.err){body.appendChild(h('div',{class:'meta',style:'color:var(--warn)',text:errMsg(S.err)}))}
+    if(!S.runs){if(!S.err)body.textContent='Čekam podatke…';return}
+    body.appendChild(h('div',{class:'runhead'},badge(run),h('span',{class:'meta',text:run?('traje '+runtime(run)+(run.status==='in_progress'?'':' (ukupno)')):''})));
+    var active=run&&(run.status==='in_progress');
+    if(st&&st.prog){var pct=st.prog.total?Math.min(100,Math.round(st.prog.done/st.prog.total*100)):0;
+      body.appendChild(h('div',{class:'bar',role:'progressbar','aria-valuenow':pct,'aria-valuemin':0,'aria-valuemax':100},h('i',{style:'width:'+pct+'%'})));
+      body.appendChild(h('div',{class:'meta',text:st.prog.done+' / '+st.prog.total+' provereno ('+pct+'%)'}))}
+    var stats=h('div',{class:'stats'});
+    function stat(v,l){stats.appendChild(h('div',{class:'stat'},h('b',{text:String(v)}),h('span',{text:l})))}
+    if(st&&st.prog)stat(st.prog.hits,'novih pogodaka');
+    stat(domains().filter(function(d){return d.status===0}).length,'pogodaka ukupno');
+    stat(domains().length,'na listi');
+    if(st&&st.hb){stat(st.hb.req,'upita');stat(st.hb.thr,'ograničeno')}
+    body.appendChild(stats);
+    if(st&&st.why){var w=h('div',{class:'why'});st.why.split(', ').slice(0,6).forEach(function(p){var m=p.match(/^([^=]+)=(\d+)$/);if(!m)return;
+      var key=m[1].replace(/\(.*$/,'');var lab=WHYL[m[1]]||(key==='below_thresholds'?'slaba istorija':key);
+      w.appendChild(h('span',{class:'chip'},lab+' ',h('b',{text:m[2]})))});body.appendChild(w)}
+    if(active&&st&&st.sinceMs!=null&&st.sinceMs>6*60000)body.appendChild(h('div',{class:'meta',style:'color:var(--warn);margin-top:8px',text:'Bez novog zapisa već '+ago(st.sinceMs)+'. Proveri log.'}))
+    else if(st&&st.sinceMs!=null)body.appendChild(h('div',{class:'meta',style:'margin-top:8px',text:'Poslednji zapis pre '+ago(st.sinceMs)}))}
+
+  function renderChips(){var box=$('#stchips');box.textContent='';
+    [0,1,2,3].forEach(function(k){box.appendChild(h('button',{class:'tog',type:'button','aria-pressed':S.f.st[k]?'true':'false',text:['Pogoci','Istorija ok','Slabi','Odbačeni'][k],
+      onclick:function(){S.f.st[k]=S.f.st[k]?0:1;saveF();render()}}))})}
+
+  function card(d){var fresh=!!S.newSet[d.domain];
+    var head=h('div',{class:'dhead'},h('div',{class:'dname',text:d.domain}),fresh?h('span',{class:'st new',text:'NOVO'}):null,h('span',{class:'st s'+d.status,text:STATUS_LABEL[d.status]||''}));
+    var mx=h('div',{class:'mx'});
+    function m(v,l){mx.appendChild(h('div',null,h('b',{text:v==null?'–':String(v)}),h('span',{text:l})))}
+    m(d.links,'backlink subneta');m(d.age==null?null:d.age+' g.','starost');m(d.pages,'stranica');m(d.last,'viđen');
+    var acts=h('div',{class:'acts'},
+      d.way?h('a',{href:d.way,target:'_blank',rel:'noopener',text:'Wayback'}):null,
+      h('a',{href:'https://porkbun.com/checkout/search?q='+encodeURIComponent(d.domain),target:'_blank',rel:'noopener',text:'Porkbun'}),
+      h('a',{href:'https://www.namecheap.com/domains/registration/results/?domain='+encodeURIComponent(d.domain),target:'_blank',rel:'noopener',text:'Namecheap'}),
+      h('button',{type:'button',text:'Backlinkovi',onclick:function(){openBacklinks(d.domain)}}),
+      h('button',{type:'button',text:'Kopiraj',onclick:function(){copy(d.domain)}}));
+    return h('article',{class:'dom'+(fresh?' fresh':'')},head,d.title?h('div',{class:'was',text:'Bio: '+d.title}):null,mx,d.verdict&&d.status!==0?h('div',{class:'was',text:d.verdict}):null,acts)}
+
+  function renderList(){var box=$('#list');box.textContent='';
+    if(!S.results&&!S.watch){box.appendChild(h('div',{class:'note',text:!cfg().token?'Podesi token u podešavanjima (⚙).':(S.err?errMsg(S.err):'Čekam listu domena…')}));return}
+    var all=domains(),list=filtered();
+    $('#fcount').textContent=list.length+' / '+all.length;
+    if(!list.length)box.appendChild(h('div',{class:'note',text:'Nijedan domen ne odgovara filterima.'}));
+    list.forEach(function(d){box.appendChild(card(d))});
+    var n=Object.keys(S.newSet).length;$('#newbanner').hidden=!n;
+    if(n)$('#newtext').textContent=n+(n===1?' novi domen':' novih domena')+' od tvoje poslednje posete'}
+
+  function renderLog(){var st=parseStatus(S.status),box=$('#logbox');box.textContent='';
+    if(!st){box.textContent='Nema podataka.';return}
+    st.lines.slice(-45).forEach(function(l){var s=h('span',{text:l.slice(2)+'\n'});if(/HIT|pogodak/i.test(l))s.className='hit';else if(/fail|error/i.test(l))s.className='warn';box.appendChild(s)})
+    box.scrollTop=box.scrollHeight}
+
+  function renderRuns(){var box=$('#runlist');box.textContent='';
+    var items=[];(S.runs||[]).forEach(function(r){items.push({n:'hunter',r:r})});(S.blruns||[]).slice(0,2).forEach(function(r){items.push({n:'backlinkovi',r:r})});
+    if(!items.length){box.appendChild(h('span',{class:'meta',text:'Nema podataka.'}));return}
+    items.sort(function(a,b){return Date.parse(b.r.created_at)-Date.parse(a.r.created_at)});
+    items.slice(0,6).forEach(function(x){box.appendChild(h('div',{class:'row'},badge(x.r),h('span',{class:'meta',text:x.n+' #'+x.r.run_number+' · '+runtime(x.r)}),h('a',{href:x.r.html_url,target:'_blank',rel:'noopener',text:'otvori'})))})}
+
+  function renderFresh(){var ts=[S.updated.status,S.updated.runs,S.updated.results].filter(Boolean);
+    $('#fresh').textContent=ts.length?('ažurirano pre '+ago(Date.now()-Math.max.apply(null,ts))):(cfg().token?'čekam podatke':'nije podešeno')}
+
+  function render(){renderFresh();renderRun();renderChips();renderList();if(S.tab==='log')renderLog();if(S.tab==='cmd')renderRuns();
+    var n=Object.keys(S.newSet).length;document.title=(n?'('+n+') ':'')+'Lov na domene';
+    var run=S.runs&&S.runs[0],act=run&&(run.status==='in_progress'||run.status==='queued'||run.status==='pending');
+    $('#c-stop').disabled=!act}
+
+  /* ---------- actions ---------- */
+  function copy(t){var ok=function(){toast('Kopirano: '+t)};
+    try{navigator.clipboard.writeText(t).then(ok,function(){toast('Domen: '+t)})}catch(e){toast('Domen: '+t)}}
+  function armed(btn,fn){btn.addEventListener('click',function(){
+    if(btn.dataset.armed){clearTimeout(btn._t);reset();fn();return}
+    btn.dataset.armed='1';btn.dataset.l=btn.textContent;btn.textContent='Potvrdi';btn.classList.add('confirm');btn._t=setTimeout(reset,5000);
+    function reset(){delete btn.dataset.armed;btn.textContent=btn.dataset.l;btn.classList.remove('confirm')}})}
+  function dispatch(wf,inputs){var body={ref:REF};if(inputs)body.inputs=inputs;
+    return api('/actions/workflows/'+wf+'/dispatches',{method:'POST',body:body}).then(function(){toast('Pokrenuto.');setTimeout(poll,4000)},function(e){toast(e&&e.code===403?'Token nema dozvolu za Actions (write). Napravi novi token sa tom dozvolom.':errMsg(e))})}
+  function cleanDomains(s){return s.split(/[\s,;]+/).map(function(x){return x.trim().toLowerCase()}).filter(function(x){return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(x)})}
+
+  function sheet(build){var sh=$('#sheet'),body=$('#sheetbody');body.textContent='';sh.hidden=false;build(body,function(){sh.hidden=true})}
+  function openBacklinks(domain){sheet(function(body,close){
+    body.appendChild(h('h3',{text:domain}));var box=h('div',{class:'meta',text:'Učitavam backlinks.md…'});body.appendChild(box);
+    var closeBtn=h('div',{class:'row',style:'margin-top:14px'},h('button',{class:'btn',type:'button',text:'Zatvori',onclick:close}));
+    getFile('backlinks.md').then(function(t){var i=t.indexOf('## '+domain+'\n'),sec='';
+      if(i>=0){var e=t.indexOf('\n## ',i+3);sec=t.slice(i,e<0?undefined:e).trim()}
+      box.textContent='';
+      if(!sec)box.textContent='Još nema rezultata za ovaj domen.';
+      else sec.split('\n').slice(1).filter(Boolean).forEach(function(l){box.appendChild(h('p',{style:'margin:6px 0;overflow-wrap:anywhere;color:var(--text)',text:l.replace(/^- /,'').replace(/\*\*/g,'')}))});
+      body.appendChild(h('div',{class:'row',style:'margin-top:12px'},h('button',{class:'btn primary',type:'button',text:'Pokreni novu proveru',onclick:function(){close();dispatch('backlinks.yml',{domains:domain})}})));
+      body.appendChild(closeBtn)},function(e){box.textContent=e&&e.code===404?'Još nema rezultata (backlinks.md ne postoji).':errMsg(e);body.appendChild(closeBtn)})})}
+
+  function openSettings(){sheet(function(body,close){var c=cfg();
+    body.appendChild(h('h3',{style:'font-family:var(--font)',text:'Podešavanja'}));
+    body.appendChild(h('p',{class:'meta',text:'Aplikacija čita tvoj privatni repo direktno sa GitHub-a. Token se čuva samo na ovom telefonu i šalje samo na api.github.com.'}));
+    var repo=h('input',{class:'search',id:'s-repo',value:c.repo,'aria-label':'Repo',autocapitalize:'off',autocomplete:'off'});
+    var tok=h('input',{class:'search',id:'s-token',type:'password',placeholder:c.token?'(sačuvan, ostavi prazno da ga zadržiš)':'github_pat_…','aria-label':'GitHub token',autocomplete:'off'});
+    body.appendChild(h('label',{class:'meta'},'Repo (vlasnik/ime)',repo));
+    body.appendChild(h('label',{class:'meta',style:'display:block;margin-top:10px'},'GitHub token',tok));
+    body.appendChild(h('p',{class:'meta'},'Napravi ga ovde: ',h('a',{href:'https://github.com/settings/personal-access-tokens/new',target:'_blank',rel:'noopener',style:'color:var(--accent)',text:'github.com/settings/personal-access-tokens/new'}),
+      '. Izaberi samo repo domain-hunter. Dozvole: Contents = Read, Actions = Read and write (za komande), Metadata = Read.'));
+    var nt=h('label',{class:'meta',style:'display:flex;gap:8px;align-items:center;margin-top:6px'},h('input',{type:'checkbox',id:'s-notify'}),'Obaveštenja kad stigne novi domen (dok je aplikacija otvorena)');
+    body.appendChild(nt);$('#s-notify').checked=c.notify;
+    var row=h('div',{class:'row',style:'margin-top:14px'},
+      h('button',{class:'btn primary',type:'button',text:'Sačuvaj',onclick:function(){
+        var r=repo.value.trim();if(!/^[\w.-]+\/[\w.-]+$/.test(r)){toast('Repo mora biti oblika vlasnik/ime.');return}
+        store('lnd.repo',r);if(tok.value.trim())store('lnd.token',tok.value.trim());
+        var want=$('#s-notify').checked;store('lnd.notify',want?'1':'0');
+        if(want&&'Notification' in window&&Notification.permission==='default')Notification.requestPermission();
+        S.results=S.watch=S.status=S.runs=S.blruns=null;S.err=null;S.updated={};close();render();poll()}}),
+      h('button',{class:'btn',type:'button',text:'Odjavi (obriši token)',onclick:function(){store('lnd.token',null);S.results=S.watch=S.status=S.runs=S.blruns=null;close();render()}}),
+      h('button',{class:'btn',type:'button',text:'Zatvori',onclick:close}));
+    body.appendChild(row)})}
+
+  /* ---------- wiring ---------- */
+  function setTab(t){S.tab=t;['domains','log','cmd'].forEach(function(k){$('#p-'+k).hidden=k!==t;$('#t-'+k).setAttribute('aria-selected',k===t?'true':'false')});render()}
+  ['domains','log','cmd'].forEach(function(k){$('#t-'+k).addEventListener('click',function(){setTab(k)})});
+  $('#refresh').addEventListener('click',function(){toast('Osvežavam…');poll()});
+  $('#settings').addEventListener('click',openSettings);
+  $('#markseen').addEventListener('click',function(){store('lnd.seen',JSON.stringify(domains().map(function(d){return d.domain})));S.newSet={};render()});
+  $('#sheet').addEventListener('click',function(e){if(e.target===this)this.hidden=true});
+  var FIELDS=[['q','q'],['f-links','links'],['f-age','age'],['f-pages','pages'],['f-last','last'],['f-sector','sector'],['f-sort','sort']];
+  FIELDS.forEach(function(p){var el=$('#'+p[0]);el.value=S.f[p[1]]==null?'':S.f[p[1]];el.addEventListener('input',function(){S.f[p[1]]=el.value;saveF();renderList()})});
+  $('#freset').addEventListener('click',function(){S.f={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links'};saveF();FIELDS.forEach(function(p){$('#'+p[0]).value=S.f[p[1]]});render()});
+  armed($('#c-run'),function(){dispatch('domain-hunter.yml')});
+  armed($('#c-stop'),function(){var run=S.runs&&S.runs[0];if(!run)return;
+    api('/actions/runs/'+run.id+'/cancel',{method:'POST'}).then(function(){toast('Run je zaustavljen.');setTimeout(poll,3000)},function(e){toast(e&&e.code===403?'Token nema dozvolu za Actions (write).':errMsg(e))})});
+  armed($('#c-blrun'),function(){var ds=cleanDomains($('#c-bl').value);if(!ds.length){toast('Upiši bar jedan domen.');return}dispatch('backlinks.yml',{domains:ds.join(',')})});
+
+  setInterval(function(){if(!document.hidden)poll()},30000);
+  setInterval(function(){renderFresh();if(S.runs)renderRun()},15000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)poll()});
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+  render();
+  if(!cfg().token)openSettings();else poll();
+})();
+</script>
+</body>
+</html>
