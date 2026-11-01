@@ -168,7 +168,7 @@ pre.log .warn{color:var(--warn)}
             <select id="f-sector"><option value="">Svi</option></select></label>
           <label class="wide">Redosled
             <select id="f-sort">
-              <option value="wpl">Wikipedia linkovi</option><option value="sl">Veličina medija (Wikipedije)</option><option value="name">Ocena imena</option><option value="wiki">Wikipedia pomeni</option><option value="links">Backlinkovi</option><option value="score">Ocena hunter-a</option>
+              <option value="ls">Jačina linkova</option><option value="wpl">Wikipedia linkovi</option><option value="sl">Veličina medija (Wikipedije)</option><option value="name">Ocena imena</option><option value="wiki">Wikipedia pomeni</option><option value="links">Backlinkovi</option><option value="score">Ocena hunter-a</option>
               <option value="age">Starost</option><option value="pages">Stranice</option><option value="last">Poslednji put viđen</option>
             </select></label>
           <div class="wide"><button class="btn small" id="freset" type="button">Poništi filtere</button></div>
@@ -265,11 +265,11 @@ pre.log .warn{color:var(--warn)}
 
   /* ---------- domain model ---------- */
   function domains(){var map={};
-    (S.results?parseCsv(S.results):[]).forEach(function(r){map[r.domain]={domain:r.domain,status:0,verdict:r.sector,sector:r.sector||'',score:num(r.score),title:r.title,age:num(r.age_years),pages:num(r.pages),snaps:num(r.snapshots),last:num(r.last),links:num(r.links),rank:num(r.rank),way:r.wayback,wiki:num(r.wiki)||0,wl:r.wiki_langs||'',wd:r.wd||'',nm:num(r.name_score),wpl:num(r.wp_links)||0,sl:num(r.wd_sitelinks)||0}});
+    (S.results?parseCsv(S.results):[]).forEach(function(r){map[r.domain]={domain:r.domain,status:0,verdict:r.sector,sector:r.sector||'',score:num(r.score),title:r.title,age:num(r.age_years),pages:num(r.pages),snaps:num(r.snapshots),last:num(r.last),links:num(r.links),rank:num(r.rank),way:r.wayback,wiki:num(r.wiki)||0,wl:r.wiki_langs||'',wd:r.wd||'',nm:num(r.name_score),wpl:num(r.wp_links)||0,sl:num(r.wd_sitelinks)||0,ls:num(r.link_score)||0}});
     (S.watch?parseCsv(S.watch):[]).forEach(function(r){var p=map[r.domain]||{domain:r.domain,sector:'',score:null};
       map[r.domain]={domain:r.domain,status:num(r.priority)==null?(p.status||0):num(r.priority),verdict:r.verdict||p.verdict,sector:p.sector,score:p.score,
         title:r.title||p.title,age:num(r.age_years)!=null?num(r.age_years):p.age,pages:num(r.pages)!=null?num(r.pages):p.pages,snaps:num(r.snapshots)!=null?num(r.snapshots):p.snaps,
-        last:num(r.last)!=null?num(r.last):p.last,links:num(r.links)!=null?num(r.links):p.links,rank:num(r.rank)!=null?num(r.rank):p.rank,way:r.wayback||p.way,wiki:(num(r.wiki)!=null&&num(r.wiki)>0)?num(r.wiki):(p.wiki||0),wl:r.wiki_langs||p.wl||'',wd:r.wd||p.wd||'',nm:num(r.name_score)!=null?num(r.name_score):p.nm,wpl:num(r.wp_links)||p.wpl||0,sl:num(r.wd_sitelinks)||p.sl||0}});
+        last:num(r.last)!=null?num(r.last):p.last,links:num(r.links)!=null?num(r.links):p.links,rank:num(r.rank)!=null?num(r.rank):p.rank,way:r.wayback||p.way,wiki:(num(r.wiki)!=null&&num(r.wiki)>0)?num(r.wiki):(p.wiki||0),wl:r.wiki_langs||p.wl||'',wd:r.wd||p.wd||'',nm:num(r.name_score)!=null?num(r.name_score):p.nm,wpl:num(r.wp_links)||p.wpl||0,sl:num(r.wd_sitelinks)||p.sl||0,ls:num(r.link_score)||p.ls||0}});
     return Object.keys(map).map(function(k){return map[k]})}
 
   function detectNew(){
@@ -306,7 +306,7 @@ pre.log .warn{color:var(--warn)}
       if(f.wd&&!d.wd)return false;
       if(f.name!==''&&f.name!=null&&(d.nm||0)<+f.name)return false;
       if(q&&(d.domain+' '+(d.title||'')).toLowerCase().indexOf(q)<0)return false;return true});
-    var key={wpl:'wpl',sl:'sl',name:'nm',wiki:'wiki',links:'links',score:'score',age:'age',pages:'pages',last:'last'}[f.sort]||'links';
+    var key={ls:'ls',wpl:'wpl',sl:'sl',name:'nm',wiki:'wiki',links:'links',score:'score',age:'age',pages:'pages',last:'last'}[f.sort]||'links';
     list.sort(function(a,b){var na=S.newSet[a.domain]?1:0,nb=S.newSet[b.domain]?1:0;if(na!==nb)return nb-na;
       if(a.status!==b.status)return a.status-b.status;return (b[key]||0)-(a[key]||0)});
     return list}
@@ -378,9 +378,10 @@ pre.log .warn{color:var(--warn)}
     if(d.wiki>0){var lang=(d.wl||'en').split(',')[0]||'en';
       wk=h('div',{class:'wkrow'},h('a',{class:'wk',href:'https://'+lang+'.wikipedia.org/w/index.php?search='+encodeURIComponent('"'+d.domain+'"')+'&ns0=1',target:'_blank',rel:'noopener',text:'WIKIPEDIA · '+d.wiki+(d.wl?' ('+d.wl.split(',').join(', ')+')':'')}),
         h('span',{class:'meta',text:'domen se pominje u člancima'}))}
+    var lsb=d.ls>0?h('div',{class:'wkrow'},h('span',{class:'wpl',text:'JAČINA LINKOVA · '+d.ls+'/100'})):null;
     var wplb=d.wpl>0?h('div',{class:'wkrow'},h('a',{class:'wpl',href:'https://en.wikipedia.org/wiki/Special:LinkSearch?target='+encodeURIComponent(d.domain),target:'_blank',rel:'noopener',text:'WIKIPEDIJA LINKUJE · '+d.wpl+' članaka'}),h('span',{class:'meta',text:'engleska Wikipedija'})):null;
     var wdb=d.wd?h('div',{class:'wkrow'},h('span',{class:'wd',text:'UGAŠENA ORGANIZACIJA'}),h('span',{class:'meta',text:d.wd})):null;
-    return h('article',{class:'dom'+(fresh?' fresh':'')+(d.wiki>0?' wiki':'')+(d.wd?' wdc':'')},head,wdb,wplb,wk,d.title?h('div',{class:'was',text:'Bio: '+d.title}):null,mx,d.verdict&&d.status!==0?h('div',{class:'was',text:d.verdict}):null,acts)}
+    return h('article',{class:'dom'+(fresh?' fresh':'')+(d.wiki>0?' wiki':'')+(d.wd?' wdc':'')},head,lsb,wdb,wplb,wk,d.title?h('div',{class:'was',text:'Bio: '+d.title}):null,mx,d.verdict&&d.status!==0?h('div',{class:'was',text:d.verdict}):null,acts)}
 
   function renderList(){var box=$('#list');box.textContent='';
     if(!S.results&&!S.watch){box.appendChild(h('div',{class:'note',text:!cfg().token?'Podesi token u podešavanjima (⚙).':(S.err?errMsg(S.err):'Čekam listu domena…')}));return}
