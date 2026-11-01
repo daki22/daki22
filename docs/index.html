@@ -93,6 +93,7 @@ main{display:flex;flex-direction:column;gap:14px;padding-top:14px}
 .nm.m{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
 .nm.b{color:var(--muted)}
 .wpl{display:inline-flex;align-items:center;font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent)}
+.del{color:#e5484d}.del.confirm{background:#e5484d;color:#fff}
 .wkrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dname{font-family:var(--mono);font-weight:600;font-size:16px;overflow-wrap:anywhere;flex:1;min-width:0}
@@ -219,6 +220,18 @@ pre.log .warn{color:var(--warn)}
   function cfg(){return {token:store('lnd.token')||'',repo:store('lnd.repo')||DEFAULT_REPO,notify:store('lnd.notify')==='1'}}
   function loadF(){var d={q:'',st:{0:1,1:1,2:1,3:0},links:'',age:'',pages:'',last:'',sector:'',sort:'links',wiki:0,wd:0,name:''};
     try{var j=JSON.parse(store('lnd.f')||'null');if(j)for(var k in j)d[k]=j[k]}catch(e){}return d}
+  function hidden(){try{return JSON.parse(store('lnd.hidden')||'{}')||{}}catch(e){return {}}}
+  function saveHidden(o){store('lnd.hidden',JSON.stringify(o))}
+  /* Delete = hide on this phone at once, and add to ignored.txt in the repo so the hunter never lists or checks it again */
+  function persistIgnored(list){var path='ignored.txt';
+    return api('/contents/'+path+'?ref='+REF,{raw:false}).then(function(j){return {sha:j&&j.sha,text:atob((j&&j.content||'').replace(/\n/g,''))}},function(e){if(e&&e.code===404)return {sha:null,text:''};throw e})
+      .then(function(cur){var have={};cur.text.split(/\s+/).forEach(function(x){if(x)have[x.toLowerCase()]=1});var add=list.filter(function(d){return !have[d]});if(!add.length)return;
+        var text=(cur.text.replace(/\s*$/,'')+'\n'+add.join('\n')).replace(/^\n/,'')+'\n';
+        var body={message:'app: ignore '+add.join(', '),content:btoa(text),branch:REF};if(cur.sha)body.sha=cur.sha;
+        return api('/contents/'+path,{method:'PUT',body:body})})}
+  function removeDomain(d){var o=hidden();o[d]=Date.now();saveHidden(o);render();
+    persistIgnored([d]).then(function(){toast('Obrisano: '+d)},function(e){toast('Sakriveno na telefonu. Token nema dozvolu za upis (Contents: write), pa lov to još ne zna.')})}
+  function restoreAll(){saveHidden({});render();toast('Vraćeni svi obrisani (u listi na telefonu).')}
   function saveF(){store('lnd.f',JSON.stringify(S.f))}
   function num(v){var n=parseFloat(v);return isFinite(n)?n:null}
   function ago(ms){var s=Math.max(0,Math.round(ms/1000));if(s<60)return s+' s';var m=Math.round(s/60);if(m<60)return m+' min';var hh=Math.floor(m/60);return hh+' h '+(m%60)+' min'}
@@ -270,7 +283,7 @@ pre.log .warn{color:var(--warn)}
       map[r.domain]={domain:r.domain,status:num(r.priority)==null?(p.status||0):num(r.priority),verdict:r.verdict||p.verdict,sector:p.sector,score:p.score,
         title:r.title||p.title,age:num(r.age_years)!=null?num(r.age_years):p.age,pages:num(r.pages)!=null?num(r.pages):p.pages,snaps:num(r.snapshots)!=null?num(r.snapshots):p.snaps,
         last:num(r.last)!=null?num(r.last):p.last,links:num(r.links)!=null?num(r.links):p.links,rank:num(r.rank)!=null?num(r.rank):p.rank,way:r.wayback||p.way,wiki:(num(r.wiki)!=null&&num(r.wiki)>0)?num(r.wiki):(p.wiki||0),wl:r.wiki_langs||p.wl||'',wd:r.wd||p.wd||'',nm:num(r.name_score)!=null?num(r.name_score):p.nm,wpl:num(r.wp_links)||p.wpl||0,sl:num(r.wd_sitelinks)||p.sl||0,ls:num(r.link_score)||p.ls||0}});
-    return Object.keys(map).map(function(k){return map[k]})}
+    var hid=hidden();return Object.keys(map).filter(function(k){return !hid[k]}).map(function(k){return map[k]})}
 
   function detectNew(){
     var all=domains().map(function(d){return d.domain});if(!all.length)return;
@@ -374,6 +387,7 @@ pre.log .warn{color:var(--warn)}
       h('a',{href:'https://www.namecheap.com/domains/registration/results/?domain='+encodeURIComponent(d.domain),target:'_blank',rel:'noopener',text:'Namecheap'}),
       h('button',{type:'button',text:'Backlinkovi',onclick:function(){openBacklinks(d.domain)}}),
       h('button',{type:'button',text:'Kopiraj',onclick:function(){copy(d.domain)}}));
+    var del=h('button',{type:'button',class:'del',text:'Obriši'});armed(del,function(){removeDomain(d.domain)});acts.appendChild(del);
     var wk=null;
     if(d.wiki>0){var lang=(d.wl||'en').split(',')[0]||'en';
       wk=h('div',{class:'wkrow'},h('a',{class:'wk',href:'https://'+lang+'.wikipedia.org/w/index.php?search='+encodeURIComponent('"'+d.domain+'"')+'&ns0=1',target:'_blank',rel:'noopener',text:'WIKIPEDIA · '+d.wiki+(d.wl?' ('+d.wl.split(',').join(', ')+')':'')}),
@@ -443,7 +457,7 @@ pre.log .warn{color:var(--warn)}
     body.appendChild(h('label',{class:'meta'},'Repo (vlasnik/ime)',repo));
     body.appendChild(h('label',{class:'meta',style:'display:block;margin-top:10px'},'GitHub token',tok));
     body.appendChild(h('p',{class:'meta'},'Napravi ga ovde: ',h('a',{href:'https://github.com/settings/personal-access-tokens/new',target:'_blank',rel:'noopener',style:'color:var(--accent)',text:'github.com/settings/personal-access-tokens/new'}),
-      '. Izaberi samo repo domain-hunter. Dozvole: Contents = Read, Actions = Read and write (za komande), Metadata = Read.'));
+      '. Izaberi samo repo domain-hunter. Dozvole: Contents = Read and write (za brisanje domena), Actions = Read and write (za komande), Metadata = Read.'));
     var nt=h('label',{class:'meta',style:'display:flex;gap:8px;align-items:center;margin-top:6px'},h('input',{type:'checkbox',id:'s-notify'}),'Obaveštenja kad stigne novi domen (dok je aplikacija otvorena)');
     body.appendChild(nt);$('#s-notify').checked=c.notify;
     var row=h('div',{class:'row',style:'margin-top:14px'},
@@ -454,6 +468,7 @@ pre.log .warn{color:var(--warn)}
         if(want&&'Notification' in window&&Notification.permission==='default')Notification.requestPermission();
         S.results=S.watch=S.status=S.runs=S.blruns=null;S.err=null;S.updated={};close();render();poll()}}),
       h('button',{class:'btn',type:'button',text:'Odjavi (obriši token)',onclick:function(){store('lnd.token',null);S.results=S.watch=S.status=S.runs=S.blruns=null;close();render()}}),
+      h('button',{class:'btn',type:'button',text:'Vrati obrisane ('+Object.keys(hidden()).length+')',onclick:function(){restoreAll();close()}}),
       h('button',{class:'btn',type:'button',text:'Zatvori',onclick:close}));
     body.appendChild(row)})}
 
